@@ -36,7 +36,7 @@ jobs:
       # Create draft release. We use release-drafter to
       # organize PRs into the appropriate section based on PR labels
       - name: Create draft release
-        uses: release-drafter/release-drafter@6db134d15f3909ccc9eefd369f02bd1e9cffdf97 # v6.2.0
+        uses: release-drafter/release-drafter@00ce30b0ce8a4d67bccfca59421cdf6c55dd0784 # v6.3.0
         with:
           name: ${{ steps.tag.outputs.name }}
           tag: ${{ steps.tag.outputs.name }}
@@ -54,7 +54,7 @@ jobs:
 
       # Install dependencies
       - name: Install uv ${{ vars.UV_VERSION }}
-        uses: astral-sh/setup-uv@eac588ad8def6316056a12d4907a9d4d84ff7a3b # v7.3.0
+        uses: astral-sh/setup-uv@5a095e7a2014a4212f075830d4f7277575a9d098 # v7.3.1
         with:
           enable-cache: true
           version: ${{ vars.UV_VERSION }}

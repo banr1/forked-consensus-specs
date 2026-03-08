@@ -87,7 +87,6 @@ class PlainFCTestCase(TestCase):
         solution, seed = self.test_dna.solution, self.test_dna.variation_seed
         mut_seed = self.test_dna.mutation_seed
         return yield_mutation_test_case(
-            generator_mode=True,
             phase=phase,
             preset=preset,
             bls_active=bls_active,
@@ -134,7 +133,7 @@ def yield_mutation_test_case(spec, state, test_kind, solution, debug, seed, mut_
         return yield_fork_choice_test_events(spec, store, test_data, events, debug)
     else:
         test_vector = events_to_test_vector(events)
-        mops = MutationOps(store.time, spec.config.SECONDS_PER_SLOT)
+        mops = MutationOps(store.time, spec.config.SLOT_DURATION_MS // 1000)
         mutated_vector, mutations = mops.rand_mutations(test_vector, 4, random.Random(mut_seed))
 
         test_data.meta["mut_seed"] = mut_seed
@@ -282,7 +281,8 @@ def yield_test_parts(spec, store, test_data: FCTestData, events):
         else:
             raise ValueError(f"not implemented {kind}")
     next_slot_time = (
-        store.genesis_time + (spec.get_current_slot(store) + 1) * spec.config.SECONDS_PER_SLOT
+        store.genesis_time
+        + (spec.get_current_slot(store) + 1) * spec.config.SLOT_DURATION_MS // 1000
     )
     on_tick_and_append_step(spec, store, next_slot_time, test_steps)
     output_store_checks(spec, store, test_steps, with_viable_for_head_weights=True)

@@ -1,4 +1,4 @@
-name: Nightly Reference Tests
+name: Nightly Pytest Reference Tests
 
 defaults:
   run:
@@ -18,7 +18,7 @@ on:
         type: string
         required: true
   schedule:
-    - cron: "0 2 * * *"
+    - cron: "0 4 * * *"
 
 jobs:
   generate-tests:
@@ -44,32 +44,31 @@ jobs:
         run: |
           cd consensus-specs
           set -o pipefail
-          make reftests verbose=true 2>&1 | tee ../consensustestgen.log
-          cp -r presets/ ../consensus-spec-tests/presets
-          cp -r configs/ ../consensus-spec-tests/configs
-      - name: Archive configurations
+          make test component=pyspec reftests=true 2>&1 | tee ../pytest-reftests.log
+      - name: Archive test vectors
         run: |
-          cd consensus-spec-tests
+          cd pytest-reftests
           tar -czvf general.tar.gz tests/general
           tar -czvf minimal.tar.gz tests/minimal
           tar -czvf mainnet.tar.gz tests/mainnet
       - name: Upload general.tar.gz
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: General Test Configuration
-          path: consensus-spec-tests/general.tar.gz
+          name: pytest-reftests-general
+          path: pytest-reftests/general.tar.gz
       - name: Upload minimal.tar.gz
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: Minimal Test Configuration
-          path: consensus-spec-tests/minimal.tar.gz
+          name: pytest-reftests-minimal
+          path: pytest-reftests/minimal.tar.gz
       - name: Upload mainnet.tar.gz
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: Mainnet Test Configuration
-          path: consensus-spec-tests/mainnet.tar.gz
-      - name: Upload consensustestgen
+          name: pytest-reftests-mainnet
+          path: pytest-reftests/mainnet.tar.gz
+      - name: Upload pytest-reftests.log
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        if: always()
         with:
-          name: consensustestgen.log
-          path: consensustestgen.log
+          name: pytest-reftests.log
+          path: pytest-reftests.log

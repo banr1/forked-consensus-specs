@@ -12,8 +12,6 @@ ALL_EXECUTABLE_SPEC_NAMES = \
 	fulu      \
 	gloas     \
 	heze      \
-	eip6800   \
-	eip7441   \
 	eip7928   \
 	eip8025
 
@@ -74,6 +72,7 @@ help-verbose:
 	@echo "    bls=<type>        BLS library type (py_ecc, milagro, arkworks, fastest; default: fastest)"
 	@echo "    kzg=<type>        KZG library type (spec, ckzg; default: ckzg)"
 	@echo "    component=<value> Test component: (all, pyspec, fw; default: all)"
+	@echo "    reftests=<bool>   Generate reference tests (default: false)"
 	@echo ""
 	@echo "  Examples:"
 	@echo "    make test"
@@ -223,18 +222,20 @@ _pyspec: _sync
 ###############################################################################
 
 TEST_REPORT_DIR = $(PYSPEC_DIR)/test-reports
+PYTEST_REFTESTS_DIR = $(CURDIR)/../pytest-reftests/tests
 
 # Run pyspec tests.
 test: MAYBE_TEST := $(if $(k),-k=$(k))
 # Disable parallelism when running a specific test.
 # Parallelism makes debugging difficult (print doesn't work).
-test: MAYBE_PARALLEL := $(if $(k),,-n auto)
+test: MAYBE_PARALLEL := $(if $(k),,-n logical --dist=worksteal)
 test: MAYBE_FORK := $(if $(fork),--fork=$(fork))
-test: PRESET := $(if $(filter fw,$(component)),,--preset=$(if $(preset),$(preset),minimal))
+test: PRESET := $(if $(filter fw,$(component)),,$(if $(preset),--preset=$(preset),))
 test: BLS := $(if $(filter fw,$(component)),,--bls-type=$(if $(bls),$(bls),fastest))
 test: KZG := $(if $(filter fw,$(component)),,--kzg-type=$(if $(kzg),$(kzg),ckzg))
 test: MAYBE_SPEC := $(if $(filter fw,$(component)),,$(PYSPEC_DIR)/eth_consensus_specs)
 test: MAYBE_INFRA := $(if $(filter pyspec,$(component)),,$(CURDIR)/tests/infra)
+test: MAYBE_REFTESTS := $(if $(filter true,$(reftests)),--reftests --reftests-output $(PYTEST_REFTESTS_DIR))
 test: _pyspec
 	@mkdir -p $(TEST_REPORT_DIR)
 	@$(UV_RUN) pytest \
@@ -248,6 +249,7 @@ test: _pyspec
 		--junitxml=$(TEST_REPORT_DIR)/test_results.xml \
 		--html=$(TEST_REPORT_DIR)/test_results.html \
 		--self-contained-html \
+		$(MAYBE_REFTESTS) \
 		$(MAYBE_INFRA) \
 		$(MAYBE_SPEC)
 
@@ -310,7 +312,7 @@ serve_docs: _pyspec _copy_docs
 
 LINT_DIFF_BEFORE := .lint_diff_before
 LINT_DIFF_AFTER := .lint_diff_after
-MARKDOWN_FILES := $(shell find $(CURDIR) -name '*.md')
+MARKDOWN_FILES := $(shell find $(CURDIR) -name '*.md' -not -path '$(CURDIR)/.*')
 MYPY_PACKAGE_BASE := $(subst /,.,$(PYSPEC_DIR:$(CURDIR)/%=%))
 MYPY_SCOPE := $(foreach S,$(ALL_EXECUTABLE_SPEC_NAMES), -p $(MYPY_PACKAGE_BASE).eth_consensus_specs.$S)
 

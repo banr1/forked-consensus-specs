@@ -56,6 +56,20 @@ def test_genesis(spec, state):
     anchor_root = get_anchor_root(spec, state)
     check_head_against_root(spec, store, anchor_root)
 
+    if is_post_gloas(spec):
+        # Verify Gloas store fields
+        assert hasattr(store, "payloads")
+        assert hasattr(store, "payload_timeliness_vote")
+        assert hasattr(store, "payload_data_availability_vote")
+        # Anchor has no observed payload envelope or PTC votes
+        assert anchor_root not in store.payloads
+        assert anchor_root not in store.payload_timeliness_vote
+        assert anchor_root not in store.payload_data_availability_vote
+
+        # get_head returns ForkChoiceNode
+        head = spec.get_head(store)
+        assert isinstance(head, spec.ForkChoiceNode)
+
     test_steps.append(
         {
             "checks": {
@@ -429,8 +443,8 @@ def test_discard_equivocations_slashed_validator_censoring(spec, state):
     # Generate an anchor block with correct state root
     anchor_block = spec.BeaconBlock(state_root=anchor_state.hash_tree_root())
     if is_post_gloas(spec):
-        anchor_block.body.signed_execution_payload_bid.message.block_hash = (
-            anchor_state.latest_block_hash
+        anchor_block.body.signed_execution_payload_bid.message = (
+            anchor_state.latest_execution_payload_bid
         )
     yield "anchor_state", anchor_state
     yield "anchor_block", anchor_block

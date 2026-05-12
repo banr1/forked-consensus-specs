@@ -9,43 +9,15 @@ from eth_consensus_specs.debug.random_value import get_random_bytes_list
 from eth_consensus_specs.test.helpers.forks import (
     is_post_capella,
     is_post_deneb,
-    is_post_eip7928,
     is_post_electra,
     is_post_gloas,
 )
-from eth_consensus_specs.test.helpers.keys import builder_privkeys
+from eth_consensus_specs.test.helpers.keys import builder_privkeys, privkeys
 from eth_consensus_specs.test.helpers.withdrawals import get_expected_withdrawals
 from eth_consensus_specs.utils.ssz.ssz_impl import hash_tree_root
 
 
 def get_execution_payload_header(spec, state, execution_payload):
-    if is_post_gloas(spec):
-        # For Gloas, create a standard ExecutionPayloadHeader
-        payload_header = spec.ExecutionPayloadHeader(
-            parent_hash=execution_payload.parent_hash,
-            fee_recipient=execution_payload.fee_recipient,
-            state_root=execution_payload.state_root,
-            receipts_root=execution_payload.receipts_root,
-            logs_bloom=execution_payload.logs_bloom,
-            prev_randao=execution_payload.prev_randao,
-            block_number=execution_payload.block_number,
-            gas_limit=execution_payload.gas_limit,
-            gas_used=execution_payload.gas_used,
-            timestamp=execution_payload.timestamp,
-            extra_data=execution_payload.extra_data,
-            base_fee_per_gas=execution_payload.base_fee_per_gas,
-            block_hash=execution_payload.block_hash,
-            transactions_root=execution_payload.transactions.hash_tree_root(),
-        )
-        # Add version-specific fields
-        if hasattr(execution_payload, "withdrawals"):
-            payload_header.withdrawals_root = execution_payload.withdrawals.hash_tree_root()
-        if hasattr(execution_payload, "blob_gas_used"):
-            payload_header.blob_gas_used = execution_payload.blob_gas_used
-        if hasattr(execution_payload, "excess_blob_gas"):
-            payload_header.excess_blob_gas = execution_payload.excess_blob_gas
-        return payload_header
-
     payload_header = spec.ExecutionPayloadHeader(
         parent_hash=execution_payload.parent_hash,
         fee_recipient=execution_payload.fee_recipient,
@@ -67,10 +39,6 @@ def get_execution_payload_header(spec, state, execution_payload):
     if is_post_deneb(spec):
         payload_header.blob_gas_used = execution_payload.blob_gas_used
         payload_header.excess_blob_gas = execution_payload.excess_blob_gas
-    if is_post_eip7928(spec):
-        payload_header.block_access_list_root = spec.hash_tree_root(
-            execution_payload.block_access_list
-        )
     return payload_header
 
 
@@ -258,6 +226,8 @@ def get_consolidation_request_rlp_bytes(consolidation_request):
 
 
 def compute_el_block_hash_with_new_fields(spec, payload, parent_beacon_block_root, requests_hash):
+    if is_post_gloas(spec):
+        return spec.Hash32()
     if payload == spec.ExecutionPayload():
         return spec.Hash32()
 
@@ -335,6 +305,7 @@ def build_empty_post_gloas_execution_payload_bid(spec, state):
         slot=state.slot,
         value=spec.Gwei(0),
         blob_kzg_commitments=kzg_list,
+        execution_requests_root=spec.hash_tree_root(spec.ExecutionRequests()),
     )
 
 
@@ -399,9 +370,9 @@ def build_empty_execution_payload(spec, state, randao_mix=None):
     if is_post_deneb(spec):
         payload.blob_gas_used = 0
         payload.excess_blob_gas = 0
-    if is_post_eip7928(spec):
-        # Add empty block access list for EIP7928
+    if is_post_gloas(spec):
         payload.block_access_list = spec.ByteList[spec.MAX_BYTES_PER_TRANSACTION]()
+        payload.slot_number = state.slot
 
     payload.block_hash = compute_el_block_hash(spec, payload, state)
 
@@ -446,7 +417,8 @@ def build_state_with_incomplete_transition(spec, state):
     else:
         header = spec.ExecutionPayloadHeader()
         state = build_state_with_execution_payload_header(spec, state, header)
-        assert not spec.is_merge_transition_complete(state)
+        if not is_post_capella(spec):
+            assert not spec.is_merge_transition_complete(state)
 
     return state
 
@@ -459,7 +431,8 @@ def build_state_with_complete_transition(spec, state):
     else:
         payload_header = get_execution_payload_header(spec, state, pre_state_payload)
         state = build_state_with_execution_payload_header(spec, state, payload_header)
-        assert spec.is_merge_transition_complete(state)
+        if not is_post_capella(spec):
+            assert spec.is_merge_transition_complete(state)
 
     return state
 
@@ -474,6 +447,43 @@ def build_state_with_execution_payload_bid(spec, state, execution_payload_bid):
     pre_state = state.copy()
     pre_state.latest_execution_payload_bid = execution_payload_bid
     return pre_state
+
+
+def build_signed_execution_payload_envelope(
+    spec, state, block_root, signed_block, execution_requests=None
+):
+    # Get builder_index from the block's execution payload bid
+    builder_index = signed_block.message.body.signed_execution_payload_bid.message.builder_index
+
+    # Create execution payload with fields matching the bid's commitments
+    payload = build_empty_execution_payload(spec, state)
+    payload.block_hash = state.latest_execution_payload_bid.block_hash
+    payload.gas_limit = state.latest_execution_payload_bid.gas_limit
+    payload.parent_hash = state.latest_block_hash
+
+    if execution_requests is None:
+        execution_requests = spec.ExecutionRequests()
+
+    # Create the execution payload envelope message
+    envelope_message = spec.ExecutionPayloadEnvelope(
+        payload=payload,
+        execution_requests=execution_requests,
+        builder_index=builder_index,
+        beacon_block_root=block_root,
+        parent_beacon_block_root=signed_block.message.parent_root,
+    )
+
+    # Sign the envelope: self-builds use proposer key, external builds use builder key
+    if envelope_message.builder_index == spec.BUILDER_INDEX_SELF_BUILD:
+        privkey = privkeys[signed_block.message.proposer_index]
+    else:
+        privkey = builder_privkeys[envelope_message.builder_index]
+    signature = spec.get_execution_payload_envelope_signature(state, envelope_message, privkey)
+
+    return spec.SignedExecutionPayloadEnvelope(
+        message=envelope_message,
+        signature=signature,
+    )
 
 
 def get_random_tx(rng):
